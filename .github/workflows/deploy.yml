@@ -65,7 +65,8 @@ jobs:
         run: |
           $img = "${{ steps.vars.outputs.image }}"
           $sha = "${{ steps.vars.outputs.sha }}"
-          docker build -t "${img}:${sha}" -t "${img}:latest" ./backend
+          $env:BUILDX_NO_DEFAULT_ATTESTATIONS = "1"
+          docker build --provenance=false --sbom=false -t "${img}:${sha}" -t "${img}:latest" ./backend
           docker push "${img}:${sha}"
           docker push "${img}:latest"
 
@@ -103,7 +104,8 @@ jobs:
         run: |
           $img = "${{ steps.vars.outputs.image }}"
           $sha = "${{ steps.vars.outputs.sha }}"
-          docker build -t "${img}:${sha}" -t "${img}:latest" ./frontend
+          $env:BUILDX_NO_DEFAULT_ATTESTATIONS = "1"
+          docker build --provenance=false --sbom=false -t "${img}:${sha}" -t "${img}:latest" ./frontend
           docker push "${img}:${sha}"
           docker push "${img}:latest"
 
