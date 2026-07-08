@@ -169,10 +169,108 @@ kubectl delete namespace mini-social
 
 ---
 
+## 5. Pipeline CI/CD (GitHub Actions + runner self-hosted + GHCR)
+
+À chaque `git push` sur `main`, la pipeline reconstruit **uniquement le
+composant modifié** (backend ou frontend) puis :
+**build → image (nouvelle version taggée par SHA) → push sur GHCR → rollout dans le cluster.**
+
+Workflow : [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
+
+### Pourquoi un runner *self-hosted* ?
+
+Le cluster est **local (Minikube)** : un runner GitHub hébergé dans le cloud ne
+pourrait pas faire `kubectl rollout` sur ta machine. Le runner self-hosted
+tourne sur ta machine, où il a accès à Docker **et** au cluster.
+
+### Mise en place (une seule fois)
+
+1. **Créer un dépôt GitHub** (ex. `mini-reseau-social`) puis pousser le code :
+   ```bash
+   git remote add origin https://github.com/<TON_USER>/mini-reseau-social.git
+   git push -u origin main
+   ```
+
+2. **Installer le runner self-hosted** : sur GitHub, `Settings → Actions →
+   Runners → New self-hosted runner → Windows x64`, puis suivre les commandes
+   affichées (`config.cmd` avec le token fourni). Lancer ensuite le runner
+   **avec ton utilisateur** (pour qu'il ait ton `~/.kube/config` et Docker) :
+   ```powershell
+   .\run.cmd
+   ```
+   > Le runner a besoin de `docker`, `kubectl` et `bash` (Git for Windows) dans
+   > le PATH, et du contexte kube `filrouge`.
+
+3. **Rendre les images GHCR accessibles au cluster** : après le 1er push
+   réussi, les images apparaissent dans `Packages` sur GitHub. Les passer en
+   **public** (`Package settings → Change visibility → Public`) pour que
+   Minikube puisse les tirer. *(Alternative : créer un `imagePullSecret` avec un
+   PAT `read:packages`.)*
+
+### Démontrer la pipeline
+
+```bash
+# Modifier un composant, ex. le frontend
+echo "<!-- test CI/CD -->" >> frontend/index.html
+git commit -am "test: déclenche la pipeline frontend"
+git push
+```
+👉 Onglet **Actions** sur GitHub : seul le job `deploy-frontend` s'exécute, et à
+la fin le pod frontend est mis à jour (`kubectl get pods -n mini-social` montre
+un nouveau pod).
+
+---
+
+## 6. Monitoring (Prometheus + Grafana)
+
+Stack **kube-prometheus-stack** installée via Helm dans le namespace
+`monitoring` (valeurs : [`monitoring/values.yaml`](monitoring/values.yaml)).
+
+### Installation
+
+```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+helm install monitoring prometheus-community/kube-prometheus-stack \
+  --namespace monitoring --create-namespace \
+  -f monitoring/values.yaml
+```
+
+### Accéder à Grafana
+
+```bash
+kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80
+# http://localhost:3000  —  identifiants : admin / admin
+```
+
+Dashboard tout prêt pour la conso CPU/RAM des pods :
+**Dashboards → Kubernetes / Compute Resources / Namespace (Pods)**, puis
+sélectionner le namespace **`mini-social`**.
+
+### Vérifier les métriques en ligne de commande (Prometheus)
+
+```bash
+kubectl port-forward -n monitoring svc/monitoring-kube-prometheus-prometheus 9090:9090
+```
+Requêtes PromQL (onglet Graph de http://localhost:9090) :
+```promql
+# RAM par pod du composant
+sum by (pod) (container_memory_working_set_bytes{namespace="mini-social"})
+
+# CPU (millicores) par pod du composant
+1000 * sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="mini-social"}[5m]))
+```
+
+---
+
 ## Structure du projet
 
 ```
 mini-reseau-social/
+├── .github/workflows/
+│   └── deploy.yml      Pipeline CI/CD (build -> GHCR -> rollout)
+├── monitoring/
+│   └── values.yaml     Conf allégée kube-prometheus-stack
 ├── backend/            API Symfony (CRUD posts)
 │   ├── src/            Entité Post, Repository, Controller
 │   ├── config/         Config Symfony (Doctrine, CORS, routes)
