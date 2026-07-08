@@ -15,9 +15,10 @@ permissions:
   contents: read
   packages: write # nécessaire pour pousser sur ghcr.io
 
+# Runner Windows self-hosted -> PowerShell (bash de WSL non fiable pour les chemins)
 defaults:
   run:
-    shell: bash
+    shell: powershell
 
 jobs:
   # 1) Détecte quels composants ont changé
@@ -48,27 +49,27 @@ jobs:
       - name: Variables
         id: vars
         run: |
-          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          echo "image=ghcr.io/$OWNER/mini-social-backend" >> "$GITHUB_OUTPUT"
-          echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          $owner = "${{ github.repository_owner }}".ToLower()
+          $sha = "${{ github.sha }}".Substring(0,7)
+          "image=ghcr.io/$owner/mini-social-backend" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Login GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        run: '"${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin'
 
       - name: Build & push image
         run: |
-          IMG="${{ steps.vars.outputs.image }}"
-          SHA="${{ steps.vars.outputs.sha }}"
-          docker build -t "$IMG:$SHA" -t "$IMG:latest" ./backend
-          docker push "$IMG:$SHA"
-          docker push "$IMG:latest"
+          $img = "${{ steps.vars.outputs.image }}"
+          $sha = "${{ steps.vars.outputs.sha }}"
+          docker build -t "${img}:${sha}" -t "${img}:latest" ./backend
+          docker push "${img}:${sha}"
+          docker push "${img}:latest"
 
       - name: Rollout dans le cluster
         run: |
-          IMG="${{ steps.vars.outputs.image }}"
-          SHA="${{ steps.vars.outputs.sha }}"
-          kubectl --context filrouge -n mini-social set image deployment/backend \
-            backend="$IMG:$SHA" db-migrate="$IMG:$SHA"
+          $img = "${{ steps.vars.outputs.image }}"
+          $sha = "${{ steps.vars.outputs.sha }}"
+          kubectl --context filrouge -n mini-social set image deployment/backend backend="${img}:${sha}" db-migrate="${img}:${sha}"
           kubectl --context filrouge -n mini-social rollout status deployment/backend --timeout=180s
 
   # 3) Frontend : build -> image -> push GHCR -> rollout
@@ -82,25 +83,25 @@ jobs:
       - name: Variables
         id: vars
         run: |
-          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          echo "image=ghcr.io/$OWNER/mini-social-frontend" >> "$GITHUB_OUTPUT"
-          echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          $owner = "${{ github.repository_owner }}".ToLower()
+          $sha = "${{ github.sha }}".Substring(0,7)
+          "image=ghcr.io/$owner/mini-social-frontend" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Login GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        run: '"${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin'
 
       - name: Build & push image
         run: |
-          IMG="${{ steps.vars.outputs.image }}"
-          SHA="${{ steps.vars.outputs.sha }}"
-          docker build -t "$IMG:$SHA" -t "$IMG:latest" ./frontend
-          docker push "$IMG:$SHA"
-          docker push "$IMG:latest"
+          $img = "${{ steps.vars.outputs.image }}"
+          $sha = "${{ steps.vars.outputs.sha }}"
+          docker build -t "${img}:${sha}" -t "${img}:latest" ./frontend
+          docker push "${img}:${sha}"
+          docker push "${img}:latest"
 
       - name: Rollout dans le cluster
         run: |
-          IMG="${{ steps.vars.outputs.image }}"
-          SHA="${{ steps.vars.outputs.sha }}"
-          kubectl --context filrouge -n mini-social set image deployment/frontend \
-            frontend="$IMG:$SHA"
+          $img = "${{ steps.vars.outputs.image }}"
+          $sha = "${{ steps.vars.outputs.sha }}"
+          kubectl --context filrouge -n mini-social set image deployment/frontend frontend="${img}:${sha}"
           kubectl --context filrouge -n mini-social rollout status deployment/frontend --timeout=180s
