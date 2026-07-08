@@ -110,3 +110,5 @@ class PostController
         return new JsonResponse(null, Response::HTTP_NO_CONTENT);
     }
 }
+
+// pipeline CI/CD demo
