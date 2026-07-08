@@ -217,7 +217,22 @@ git push
 ```
 👉 Onglet **Actions** sur GitHub : seul le job `deploy-frontend` s'exécute, et à
 la fin le pod frontend est mis à jour (`kubectl get pods -n mini-social` montre
-un nouveau pod).
+un nouveau pod). Le composant tourne alors depuis
+`ghcr.io/<user>/mini-social-frontend:<sha>`.
+
+### Points techniques (pièges rencontrés et résolus)
+
+- **Shell du runner Windows** : `shell: bash` sélectionne le bash de **WSL**
+  (`System32\bash.exe`) qui casse les chemins Windows. Le workflow utilise donc
+  **PowerShell** pour toutes les étapes `run`.
+- **Login GHCR** : le piping du token via `--password-stdin` en PowerShell
+  échoue (`denied`). On utilise l'action officielle **`docker/login-action@v3`**.
+- **Pull de l'image par Minikube** : par défaut, le builder Docker ajoute des
+  **attestations SLSA** (`application/vnd.in-toto+json`) que le kubelet de
+  Minikube refuse. Le build passe donc `--provenance=false --sbom=false`
+  (+ `BUILDX_NO_DEFAULT_ATTESTATIONS=1`).
+- **Visibilité des packages** : les images GHCR doivent être **publiques** pour
+  que Minikube les tire sans secret (vérifiable : le pull anonyme réussit).
 
 ---
 
