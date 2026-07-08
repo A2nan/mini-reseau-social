@@ -1,0 +1,37 @@
+# Stack locale pour tester avant le déploiement Kubernetes.
+# Accès : http://localhost:8080
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: social
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d social"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: "0"
+      APP_SECRET: local-dev-secret
+      DATABASE_URL: "postgresql://app:app_password@db:5432/social?serverVersion=16&charset=utf8"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

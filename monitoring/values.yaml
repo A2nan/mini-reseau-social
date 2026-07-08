@@ -1,0 +1,41 @@
+# Valeurs allégées de kube-prometheus-stack pour Minikube.
+# Objectif : Prometheus + Grafana + métriques CPU/RAM des pods, sans surcharger.
+
+# Alertmanager : inutile pour le TP -> désactivé
+alertmanager:
+  enabled: false
+
+# Prometheus : rétention et ressources réduites
+prometheus:
+  prometheusSpec:
+    retention: 2d
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 700Mi
+    # Scrute les ServiceMonitors de tous les namespaces
+    serviceMonitorSelectorNilUsesHelmValues: false
+
+# Grafana : login simple pour la démo
+grafana:
+  adminUser: admin
+  adminPassword: admin
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  service:
+    type: NodePort
+    nodePort: 30030
+
+# kube-state-metrics et node-exporter fournissent les métriques CPU/RAM
+kubeStateMetrics:
+  enabled: true
+nodeExporter:
+  enabled: true

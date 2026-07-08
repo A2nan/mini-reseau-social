@@ -1,0 +1,106 @@
+name: CI/CD Mini Réseau Social
+
+# Déclenché à chaque push sur main. Grâce aux filtres de chemin, seul le
+# composant modifié (backend ou frontend) est reconstruit et redéployé.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch: {} # permet aussi un déclenchement manuel
+
+permissions:
+  contents: read
+  packages: write # nécessaire pour pousser sur ghcr.io
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # 1) Détecte quels composants ont changé
+  changes:
+    runs-on: self-hosted
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            frontend:
+              - 'frontend/**'
+
+  # 2) Backend : build -> image -> push GHCR -> rollout
+  deploy-backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Variables
+        id: vars
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/$OWNER/mini-social-backend" >> "$GITHUB_OUTPUT"
+          echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Login GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build & push image
+        run: |
+          IMG="${{ steps.vars.outputs.image }}"
+          SHA="${{ steps.vars.outputs.sha }}"
+          docker build -t "$IMG:$SHA" -t "$IMG:latest" ./backend
+          docker push "$IMG:$SHA"
+          docker push "$IMG:latest"
+
+      - name: Rollout dans le cluster
+        run: |
+          IMG="${{ steps.vars.outputs.image }}"
+          SHA="${{ steps.vars.outputs.sha }}"
+          kubectl --context filrouge -n mini-social set image deployment/backend \
+            backend="$IMG:$SHA" db-migrate="$IMG:$SHA"
+          kubectl --context filrouge -n mini-social rollout status deployment/backend --timeout=180s
+
+  # 3) Frontend : build -> image -> push GHCR -> rollout
+  deploy-frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Variables
+        id: vars
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/$OWNER/mini-social-frontend" >> "$GITHUB_OUTPUT"
+          echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Login GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build & push image
+        run: |
+          IMG="${{ steps.vars.outputs.image }}"
+          SHA="${{ steps.vars.outputs.sha }}"
+          docker build -t "$IMG:$SHA" -t "$IMG:latest" ./frontend
+          docker push "$IMG:$SHA"
+          docker push "$IMG:latest"
+
+      - name: Rollout dans le cluster
+        run: |
+          IMG="${{ steps.vars.outputs.image }}"
+          SHA="${{ steps.vars.outputs.sha }}"
+          kubectl --context filrouge -n mini-social set image deployment/frontend \
+            frontend="$IMG:$SHA"
+          kubectl --context filrouge -n mini-social rollout status deployment/frontend --timeout=180s

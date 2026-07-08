@@ -1,0 +1,16 @@
+# Dépendances
+backend/vendor/
+frontend/node_modules/
+
+# Artefacts de build
+backend/var/
+frontend/dist/
+
+# Secrets locaux
+**/.env.local
+
+# OS / éditeurs
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
